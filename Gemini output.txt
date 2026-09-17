@@ -1,0 +1,102 @@
+Gemini output
+#include <iostream>
+#include <string>
+#include <vector>
+#include <sstream>
+
+struct Email {
+    std::string sender, subject, date;
+
+    int priorityScore() const {
+        if (sender == "Boss") return 5;
+        if (sender == "Subordinate") return 4;
+        if (sender == "Peer") return 3;
+        if (sender == "ImportantPerson") return 2;
+        return 1; // OtherPerson
+    }
+
+    // Convert MM-DD-YYYY to YYYYMMDD string for easy chronological comparison
+    std::string formattedDate() const {
+        return date.substr(6, 4) + date.substr(0, 2) + date.substr(3, 2);
+    }
+
+    bool operator<(const Email& other) const {
+        if (priorityScore() != other.priorityScore())
+            return priorityScore() < other.priorityScore();
+        return formattedDate() < other.formattedDate(); // Newest date takes priority
+    }
+};
+
+class MaxHeap {
+    std::vector<Email> heap;
+
+    void siftUp(int i) {
+        while (i > 0 && heap[(i - 1) / 2] < heap[i]) {
+            std::swap(heap[i], heap[(i - 1) / 2]);
+            i = (i - 1) / 2;
+        }
+    }
+
+    void siftDown(int i) {
+        int maxIdx = i, left = 2 * i + 1, right = 2 * i + 2, size = heap.size();
+        if (left < size && heap[maxIdx] < heap[left]) maxIdx = left;
+        if (right < size && heap[maxIdx] < heap[right]) maxIdx = right;
+        if (i != maxIdx) {
+            std::swap(heap[i], heap[maxIdx]);
+            siftDown(maxIdx);
+        }
+    }
+
+public:
+    void push(const Email& email) {
+        heap.push_back(email);
+        siftUp(heap.size() - 1);
+    }
+
+    void pop() {
+        if (heap.empty()) return;
+        heap[0] = heap.back();
+        heap.pop_back();
+        siftDown(0);
+    }
+
+    Email top() const { return heap.front(); }
+    size_t size() const { return heap.size(); }
+    bool empty() const { return heap.empty(); }
+};
+
+int main() {
+    MaxHeap inbox;
+    std::string line;
+
+    while (std::getline(std::cin, line)) {
+        if (line.rfind("EMAIL ", 0) == 0) {
+            std::stringstream ss(line.substr(6));
+            Email email;
+            std::getline(ss, email.sender, ',');
+            std::getline(ss, email.subject, ',');
+            std::getline(ss, email.date);
+            
+            // Trim leading spaces if present
+            if (!email.subject.empty() && email.subject[0] == ' ') email.subject.erase(0, 1);
+            if (!email.date.empty() && email.date[0] == ' ') email.date.erase(0, 1);
+
+            inbox.push(email);
+        } 
+        else if (line == "COUNT") {
+            std::cout << "There are " << inbox.size() << " emails to read.\n";
+        } 
+        else if (line == "NEXT") {
+            if (!inbox.empty()) {
+                Email e = inbox.top();
+                std::cout << "Next email:\nSender: " << e.sender 
+                          << "\nSubject: " << e.subject 
+                          << "\nDate: " << e.date << "\n";
+            }
+        } 
+        else if (line == "READ") {
+            if (!inbox.empty()) inbox.pop();
+        }
+    }
+    return 0;
+}

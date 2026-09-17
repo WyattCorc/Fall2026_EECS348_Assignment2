@@ -1,0 +1,179 @@
+Claude Output
+// MaxHeap-based priority queue for prioritizing a CEO's emails.
+// The heap is implemented from scratch (array/list-based), with no
+// pre-existing heap library (no std::priority_queue, no <algorithm>
+// heap functions). std::vector is used only as the underlying
+// resizable array/list that backs the heap.
+//
+// Commands (one per line, from stdin):
+//   EMAIL <sender category>, <subject line>, <date MM-DD-YYYY>
+//   NEXT
+//   READ
+//   COUNT
+//
+// Priority order (highest read first): Boss > Subordinate > Peer >
+// ImportantPerson > OtherPerson. Ties broken by newest date first.
+
+#include <iostream>
+#include <fstream>
+#include <sstream>
+#include <string>
+#include <vector>
+#include <cstdio>
+
+using namespace std;
+
+// ---------- Email record ----------
+struct Email {
+    string category;
+    string subject;
+    string date;      // original MM-DD-YYYY string, for display
+    int catPriority;   // higher = more urgent
+    int dateVal;        // YYYYMMDD, higher = newer
+};
+
+static int categoryPriority(const string &cat) {
+    if (cat == "Boss")            return 5;
+    if (cat == "Subordinate")     return 4;
+    if (cat == "Peer")            return 3;
+    if (cat == "ImportantPerson") return 2;
+    if (cat == "OtherPerson")     return 1;
+    return 0; // unrecognized category = lowest priority
+}
+
+static int dateValue(const string &date) {
+    int mm = 0, dd = 0, yyyy = 0;
+    sscanf(date.c_str(), "%d-%d-%d", &mm, &dd, &yyyy);
+    return yyyy * 10000 + mm * 100 + dd; // larger = newer
+}
+
+static string trim(const string &s) {
+    size_t start = s.find_first_not_of(" \t\r\n");
+    if (start == string::npos) return "";
+    size_t end = s.find_last_not_of(" \t\r\n");
+    return s.substr(start, end - start + 1);
+}
+
+// ---------- MaxHeap (list/array-based, built from scratch) ----------
+class MaxHeap {
+    vector<Email> heap;
+
+    // Returns true if 'a' should sit above 'b' in the max-heap.
+    bool higherPriority(const Email &a, const Email &b) const {
+        if (a.catPriority != b.catPriority) return a.catPriority > b.catPriority;
+        return a.dateVal > b.dateVal; // newer email wins ties
+    }
+
+    void siftUp(int idx) {
+        while (idx > 0) {
+            int parent = (idx - 1) / 2;
+            if (higherPriority(heap[idx], heap[parent])) {
+                swap(heap[idx], heap[parent]);
+                idx = parent;
+            } else break;
+        }
+    }
+
+    void siftDown(int idx) {
+        int n = (int)heap.size();
+        while (true) {
+            int left = 2 * idx + 1, right = 2 * idx + 2, largest = idx;
+            if (left < n && higherPriority(heap[left], heap[largest]))  largest = left;
+            if (right < n && higherPriority(heap[right], heap[largest])) largest = right;
+            if (largest == idx) break;
+            swap(heap[idx], heap[largest]);
+            idx = largest;
+        }
+    }
+
+public:
+    void insert(const Email &e) {
+        heap.push_back(e);
+        siftUp((int)heap.size() - 1);
+    }
+
+    bool empty() const { return heap.empty(); }
+    int  count() const { return (int)heap.size(); }
+
+    const Email *peek() const {
+        if (heap.empty()) return nullptr;
+        return &heap[0];
+    }
+
+    void pop() {
+        if (heap.empty()) return;
+        heap[0] = heap.back();
+        heap.pop_back();
+        if (!heap.empty()) siftDown(0);
+    }
+};
+
+// ---------- Command handling ----------
+static void handleEmail(MaxHeap &pq, const string &rest) {
+    // rest is everything after "EMAIL ", format: category, subject, date
+    vector<string> fields;
+    stringstream ss(rest);
+    string field;
+    while (getline(ss, field, ',')) fields.push_back(field);
+
+    if (fields.size() < 3) {
+        cerr << "Malformed EMAIL line, skipping: " << rest << "\n";
+        return;
+    }
+
+    Email e;
+    e.category = trim(fields[0]);
+    e.subject  = trim(fields[1]);
+    e.date     = trim(fields[2]);
+    e.catPriority = categoryPriority(e.category);
+    e.dateVal     = dateValue(e.date);
+
+    pq.insert(e);
+}
+
+int main(int argc, char *argv[]) {
+    MaxHeap pq;
+
+    // Read from a file given as argv[1], or from stdin if none given.
+    istream *in = &cin;
+    ifstream fileStream;
+    if (argc > 1) {
+        fileStream.open(argv[1]);
+        if (!fileStream) {
+            cerr << "Could not open file: " << argv[1] << "\n";
+            return 1;
+        }
+        in = &fileStream;
+    }
+
+    string line;
+    while (getline(*in, line)) {
+        string trimmed = trim(line);
+        if (trimmed.empty()) continue;
+
+        if (trimmed.rfind("EMAIL", 0) == 0) {
+            // Everything after "EMAIL" (and one following space, if present)
+            string rest = trimmed.substr(5);
+            if (!rest.empty() && rest[0] == ' ') rest = rest.substr(1);
+            handleEmail(pq, rest);
+        } else if (trimmed == "NEXT") {
+            const Email *top = pq.peek();
+            if (!top) {
+                cout << "No emails to read.\n";
+            } else {
+                cout << "Next email:\n";
+                cout << "Sender: " << top->category << "\n";
+                cout << "Subject: " << top->subject << "\n";
+                cout << "Date: " << top->date << "\n";
+            }
+        } else if (trimmed == "READ") {
+            pq.pop();
+        } else if (trimmed == "COUNT") {
+            cout << "There are " << pq.count() << " emails to read.\n";
+        } else {
+            cerr << "Unknown command, skipping: " << trimmed << "\n";
+        }
+    }
+
+    return 0;
+}
